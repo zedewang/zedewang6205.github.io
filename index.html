@@ -1,1 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的记账本 (完整 CRUD 版)</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* --- CSS 样式部分 --- */
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background-color: #f4f7f6; 
+            margin: 0; 
+            padding: 20px; 
+            display: flex;
+            justify-content: center;
+        }
+        .container { 
+            width: 100%; 
+            max-width: 450px; 
+            background: #ffffff; 
+            padding: 25px; 
+            border-radius: 12px; 
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1); 
+        }
+        h2 { text-align: center; color: #333; margin-top: 0; margin-bottom: 20px;}
+        
+        .search-box { margin-bottom: 15px; }
+        .search-box input {
+            width: 100%; padding: 10px 10px 10px 35px; border: 1px solid #ccc; 
+            border-radius: 20px; box-sizing: border-box; font-size: 14px;
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23999"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>');
+            background-repeat: no-repeat; background-position: 10px center; background-size: 18px;
+            transition: border-color 0.3s;
+        }
+        .search-box input:focus { outline: none; border-color: #007bff; }
 
+        .controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .controls input[type="month"] { width: auto; padding: 5px; border: 1px solid #ccc; border-radius: 6px;}
+
+        .dashboard { 
+            display: flex; justify-content: space-between; background: #eef2f5; 
+            padding: 15px; border-radius: 8px; margin-bottom: 20px; font-size: 14px; font-weight: bold;
+        }
+        .income-text { color: #28a745; }
+        .expense-text { color: #dc3545; }
+        .balance-text { color: #007bff; }
+
+        .chart-container { position: relative; height: 220px; width: 100%; margin-bottom: 20px; }
+        .no-data-text { text-align: center; color: #888; font-size: 14px; line-height: 200px; }
+
+        .form-group { margin-bottom: 12px; }
+        label { display: block; margin-bottom: 5px; font-size: 14px; color: #555; }
+        input[type="date"], input[type="number"], input[type="text"], select { 
+            width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 14px; 
+        }
+        
+        /* 按钮组排版 */
+        .form-actions { display: flex; gap: 10px; margin-top: 10px; }
+        button { border: none; cursor: pointer; font-weight: bold; border-radius: 6px; padding: 10px; font-size: 14px; transition: background-color 0.2s;}
+        
+        .add-btn { background-color: #007bff; color: white; flex: 1; }
+        .add-btn:hover { background-color: #0056b3; }
+        
+        .save-btn { background-color: #28a745; color: white; flex: 1; }
+        .save-btn:hover { background-color: #218838; }
+        
+        .cancel-btn { background-color: #6c757d; color: white; flex: 1; display: none; }
+        .cancel-btn:hover { background-color: #5a6268; }
+
+        button.export-btn { background-color: #28a745; color: white; width: 100%; margin-top: 20px; }
+        button.export-btn:hover { background-color: #218838; }
+
+        ul { list-style: none; padding: 0; margin-top: 20px; }
+        li { padding: 12px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+        li:last-child { border-bottom: none; }
+        .record-info { display: flex; flex-direction: column; }
+        .record-title { font-weight: bold; margin-bottom: 3px; }
+        .record-tag { font-size: 11px; background: #eee; padding: 2px 6px; border-radius: 4px; color: #555; display: inline-block; margin-right: 5px; }
+        .record-date { font-size: 12px; color: #888; }
+        
+        .action-btns { display: flex; gap: 5px; }
+        .edit-btn { background: #ffc107; color: #333; padding: 5px 10px; border-radius: 4px; font-size: 12px; }
+        .edit-btn:hover { background: #e0a800; }
+        .delete-btn { background: #dc3545; color: white; padding: 5px 10px; border-radius: 4px; font-size: 12px; }
+        .delete-btn:hover { background: #c82333; }
+        
+        /* 编辑状态时的网页背景提示 */
+        .editing-mode { border: 2px dashed #ffc107; padding: 23px; }
+    </style>
+</head>
+<body>
+
+    <div class="container" id="app-container">
+        <h2>💰 记账本</h2>
+        
+        <div class="search-box">
+            <input type="text" id="search-input" placeholder="搜索账单说明或分类..." oninput="updateUI()">
+        </div>
+
+        <div class="controls">
+            <label for="filter-month">筛选月份：</label>
+            <input type="month" id="filter-month" onchange="updateUI()">
+        </div>
+
+        <div class="dashboard">
+            <div class="income-text">收入: ￥<span id="total-income">0.00</span></div>
+            <div class="expense-text">支出: ￥<span id="total-expense">0.00</span></div>
+            <div class="balance-text">结余: ￥<span id="balance">0.00</span></div>
+        </div>
+
+        <div class="chart-container" id="chart-wrapper">
+            <canvas id="myChart"></canvas>
+        </div>
+
+        <div id="form-area"></div>
+        <div class="form-group">
+            <label>日期:</label>
+            <input type="date" id="record-date">
+        </div>
+        
+        <div class="form-group">
+            <label>收支分类:</label>
+            <select id="categorySelect">
+                <optgroup label="🔴 支出类">
+                    <option value="expense-餐饮">餐饮美食</option>
+                    <option value="expense-交通">交通出行</option>
+                    <option value="expense-购物">日常购物</option>
+                    <option value="expense-居住">房屋居住</option>
+                    <option value="expense-娱乐">休闲娱乐</option>
+                    <option value="expense-其他">其他支出</option>
+                </optgroup>
+                <optgroup label="🟢 收入类">
+                    <option value="income-工资">固定工资</option>
+                    <option value="income-理财">理财收益</option>
+                    <option value="income-兼职">兼职外快</option>
+                    <option value="income-其他">其他收入</option>
+                </optgroup>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>金额 (元):</label>
+            <input type="number" id="amount" placeholder="输入金额，例如：50" min="0" step="0.01">
+        </div>
+        <div class="form-group">
+            <label>账单说明:</label>
+            <input type="text" id="description" placeholder="例如：打车、午餐、发工资">
+        </div>
+        
+        <div class="form-actions">
+            <button class="add-btn" id="submit-btn" onclick="submitRecord()">添加记录</button>
+            <button class="cancel-btn" id="cancel-btn" onclick="cancelEdit()">取消</button>
+        </div>
+
+        <ul id="record-list"></ul>
+        <button class="export-btn" onclick="exportToCSV()">⬇️ 导出当前显示数据</button>
+    </div>
+
+    <script>
+        let records = JSON.parse(localStorage.getItem('myAccountBook')) || [];
+        let accountChart = null; 
+        
+        // 【核心状态变量】：用于记录当前正在编辑的账单的索引。-1表示没有在编辑（即添加新账单模式）
+        let editingIndex = -1;
+
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('record-date').value = today;
+        const currentMonth = today.substring(0, 7);
+        document.getElementById('filter-month').value = currentMonth;
+
+        function updateExpenseChart(filteredRecords) {
+            const wrapper = document.getElementById('chart-wrapper');
+            if (accountChart) accountChart.destroy();
+
+            const expenseData = {};
+            let hasExpense = false;
+
+            filteredRecords.forEach(record => {
+                if (record.type === 'expense') {
+                    hasExpense = true;
+                    const cat = record.category || '其他'; 
+                    if (!expenseData[cat]) expenseData[cat] = 0;
+                    expenseData[cat] += record.amount;
+                }
+            });
+
+            if (!hasExpense) {
+                wrapper.innerHTML = '<div class="no-data-text">当前筛选条件下暂无支出</div>';
+                return;
+            } else {
+                wrapper.innerHTML = '<canvas id="myChart"></canvas>';
+            }
+
+            const labels = Object.keys(expenseData); 
+            const data = Object.values(expenseData); 
+            const colors = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40'];
+
+            const newCtx = document.getElementById('myChart').getContext('2d');
+            accountChart = new Chart(newCtx, {
+                type: 'doughnut', 
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data, backgroundColor: colors.slice(0, labels.length), borderWidth: 2, hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { position: 'right' }, tooltip: { callbacks: { label: function(context) { return context.label + ': ￥' + context.raw.toFixed(2); } } } }
+                }
+            });
+        }
+
+        function updateUI() {
+            const list = document.getElementById('record-list');
+            list.innerHTML = ''; 
+            
+            let totalIncome = 0;
+            let totalExpense = 0;
+            const selectedMonth = document.getElementById('filter-month').value;
+            const searchText = document.getElementById('search-input').value.trim().toLowerCase();
+
+            const filteredRecords = records.filter(record => {
+                const matchMonth = record.date.startsWith(selectedMonth);
+                const desc = record.description.toLowerCase();
+                const cat = (record.category || '未分类').toLowerCase();
+                return matchMonth && (desc.includes(searchText) || cat.includes(searchText));
+            });
+
+            filteredRecords.forEach((record) => {
+                if (record.type === 'income') {
+                    totalIncome += record.amount;
+                } else {
+                    totalExpense += record.amount;
+                }
+
+                // 获取真实索引，这非常重要！因为我们要对真实数组进行编辑和删除
+                const originalIndex = records.indexOf(record);
+                const li = document.createElement('li');
+                const sign = record.type === 'income' ? '+' : '-';
+                const colorClass = record.type === 'income' ? 'income-text' : 'expense-text';
+                const catDisplay = record.category || '未分类';
+                
+                li.innerHTML = `
+                    <div class="record-info">
+                        <div class="record-title">
+                            <span class="record-tag">${catDisplay}</span>
+                            ${record.description}
+                        </div>
+                        <span class="record-date">${record.date}</span>
+                    </div>
+                    <div class="action-btns">
+                        <span class="${colorClass}" style="margin-right:10px;">${sign}￥${record.amount.toFixed(2)}</span>
+                        <button class="edit-btn" onclick="startEdit(${originalIndex})">编辑</button>
+                        <button class="delete-btn" onclick="deleteRecord(${originalIndex})">删除</button>
+                    </div>
+                `;
+                list.appendChild(li);
+            });
+
+            document.getElementById('total-income').innerText = totalIncome.toFixed(2);
+            document.getElementById('total-expense').innerText = totalExpense.toFixed(2);
+            document.getElementById('balance').innerText = (totalIncome - totalExpense).toFixed(2);
+
+            updateExpenseChart(filteredRecords);
+        }
+
+        // --- 开始编辑（填入数据并改变按钮状态） ---
+        function startEdit(index) {
+            editingIndex = index; // 记录当前正在编辑的数组索引
+            const record = records[index]; // 提取该条数据
+
+            // 1. 把数据填回到输入框
+            document.getElementById('record-date').value = record.date;
+            document.getElementById('amount').value = record.amount;
+            document.getElementById('description').value = record.description;
+            // 拼装下拉菜单的值（例如 "expense-餐饮"）
+            document.getElementById('categorySelect').value = `${record.type}-${record.category}`;
+
+            // 2. 改变界面状态，提示用户正在编辑
+            const submitBtn = document.getElementById('submit-btn');
+            submitBtn.innerText = "保存修改";
+            submitBtn.className = "save-btn"; // 变成绿色
+            document.getElementById('cancel-btn').style.display = "block"; // 显示取消按钮
+            document.getElementById('app-container').classList.add('editing-mode'); // 增加黄色虚线边框
+
+            // 平滑滚动到输入区，方便在手机上操作
+            document.getElementById('form-area').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // --- 取消编辑（清空数据并恢复按钮状态） ---
+        function cancelEdit() {
+            editingIndex = -1; // 恢复为新增模式
+
+            // 1. 清空输入框
+            document.getElementById('amount').value = '';
+            document.getElementById('description').value = '';
+            document.getElementById('record-date').value = new Date().toISOString().split('T')[0];
+
+            // 2. 恢复界面状态
+            const submitBtn = document.getElementById('submit-btn');
+            submitBtn.innerText = "添加记录";
+            submitBtn.className = "add-btn"; // 恢复蓝色
+            document.getElementById('cancel-btn').style.display = "none"; // 隐藏取消按钮
+            document.getElementById('app-container').classList.remove('editing-mode'); // 移除黄色虚线边框
+        }
+
+        // --- 核心保存逻辑（合并了“新增”和“修改”的功能） ---
+        function submitRecord() {
+            const date = document.getElementById('record-date').value;
+            const selectValue = document.getElementById('categorySelect').value;
+            const amount = parseFloat(document.getElementById('amount').value);
+            const description = document.getElementById('description').value;
+
+            if (!date || isNaN(amount) || amount <= 0 || description.trim() === '') {
+                alert("请填写完整的日期、金额和说明！");
+                return;
+            }
+
+            const parts = selectValue.split('-');
+            const newRecord = { date: date, type: parts[0], category: parts[1], amount: amount, description: description };
+
+            if (editingIndex > -1) {
+                // 如果当前处于编辑模式，则【覆盖】对应索引的老数据
+                records[editingIndex] = newRecord;
+                // 保存完毕后，自动退出编辑状态
+                cancelEdit(); 
+            } else {
+                // 如果是新增模式，则【添加】到数组末尾
+                records.push(newRecord);
+                // 仅清空金额和说明，保留日期方便连续记账
+                document.getElementById('amount').value = '';
+                document.getElementById('description').value = '';
+            }
+            
+            // 无论新增还是修改，最后都要排序、保存本地并刷新网页
+            records.sort((a, b) => new Date(b.date) - new Date(a.date));
+            localStorage.setItem('myAccountBook', JSON.stringify(records));
+            updateUI();
+        }
+
+        function deleteRecord(index) {
+            // 如果用户正在编辑这条数据时点击了删除，我们要退出编辑状态
+            if (index === editingIndex) {
+                cancelEdit();
+            }
+            records.splice(index, 1);
+            localStorage.setItem('myAccountBook', JSON.stringify(records));
+            updateUI();
+        }
+
+        function exportToCSV() {
+            const selectedMonth = document.getElementById('filter-month').value;
+            const searchText = document.getElementById('search-input').value.trim().toLowerCase();
+            const filteredRecords = records.filter(record => {
+                const matchMonth = record.date.startsWith(selectedMonth);
+                const desc = record.description.toLowerCase();
+                const cat = (record.category || '未分类').toLowerCase();
+                return matchMonth && (desc.includes(searchText) || cat.includes(searchText));
+            });
+            
+            if (filteredRecords.length === 0) return alert("当前没有匹配的数据可导出！");
+
+            let csvContent = "\uFEFF日期,类型,分类,金额,说明\n";
+            filteredRecords.forEach(record => {
+                const typeName = record.type === 'income' ? '收入' : '支出';
+                const catName = record.category || '未分类';
+                csvContent += `${record.date},${typeName},${catName},${record.amount},${record.description}\n`;
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = `记账明细_导出.csv`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        updateUI();
+    </script>
+</body>
+</html>
